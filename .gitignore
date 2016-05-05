@@ -1,3 +1,4 @@
+
 # Git ignore patterns
 # Author: Maxime Petazzoni <mpetazzoni@turn.com>
 
@@ -21,3 +22,6 @@ core/doc/*
 *.bak
 *~
 pom.xml.releaseBackup
+
+*.iml
+.idea/

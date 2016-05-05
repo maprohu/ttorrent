@@ -2,7 +2,7 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<parent>
-		<groupId>com.turn</groupId>
+		<groupId>com.turn.maprohu</groupId>
 		<artifactId>ttorrent</artifactId>
 		<version>1.5</version>
 	</parent>

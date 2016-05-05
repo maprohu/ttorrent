@@ -16,6 +16,7 @@
 package com.turn.ttorrent.client;
 
 import com.turn.ttorrent.bcodec.InvalidBEncodingException;
+import com.turn.ttorrent.client.storage.TorrentByteStorageProvider;
 import com.turn.ttorrent.common.Torrent;
 import com.turn.ttorrent.client.peer.PeerActivityListener;
 import com.turn.ttorrent.client.peer.SharingPeer;
@@ -207,16 +208,46 @@ public class SharedTorrent extends Torrent implements PeerActivityListener {
 	 * destination directory does not exist and can't be created.
 	 * @throws IOException If the torrent file cannot be read or decoded.
 	 */
-	public SharedTorrent(byte[] torrent, File parent, boolean seeder,
-			RequestStrategy requestStrategy)
+	public SharedTorrent(byte[] torrent, final File parent, boolean seeder,
+						 RequestStrategy requestStrategy)
+			throws FileNotFoundException, IOException, NoSuchAlgorithmException {
+        this(
+                torrent,
+                new TorrentByteStorageProvider() {
+                    @Override
+                    public TorrentByteStorage create(List<TorrentFile> torrentFiles, long size) throws IOException {
+                        if (parent == null || !parent.isDirectory()) {
+                            throw new IllegalArgumentException("Invalid parent directory!");
+                        }
+
+                        String parentPath = parent.getCanonicalPath();
+                        List<FileStorage> files = new LinkedList<FileStorage>();
+                        long offset = 0L;
+                        for (Torrent.TorrentFile file : torrentFiles) {
+                            File actual = new File(parent, file.file.getPath());
+
+                            if (!actual.getCanonicalPath().startsWith(parentPath)) {
+                                throw new SecurityException("Torrent file path attempted " +
+                                        "to break directory jail!");
+                            }
+
+                            actual.getParentFile().mkdirs();
+                            files.add(new FileStorage(actual, offset, file.size));
+                            offset += file.size;
+                        }
+                        return new FileCollectionStorage(files, size);
+                    }
+                },
+                seeder,
+                requestStrategy
+        );
+	}
+
+	public SharedTorrent(byte[] torrent, TorrentByteStorageProvider storageProvider, boolean seeder,
+                         RequestStrategy requestStrategy)
 		throws FileNotFoundException, IOException, NoSuchAlgorithmException {
 		super(torrent, seeder);
 
-		if (parent == null || !parent.isDirectory()) {
-			throw new IllegalArgumentException("Invalid parent directory!");
-		}
-
-		String parentPath = parent.getCanonicalPath();
 
 		try {
 			this.pieceLength = this.decoded_info.get("piece length").getInt();
@@ -233,21 +264,8 @@ public class SharedTorrent extends Torrent implements PeerActivityListener {
 					"Error reading torrent meta-info fields!");
 		}
 
-		List<FileStorage> files = new LinkedList<FileStorage>();
-		long offset = 0L;
-		for (Torrent.TorrentFile file : this.files) {
-			File actual = new File(parent, file.file.getPath());
 
-			if (!actual.getCanonicalPath().startsWith(parentPath)) {
-				throw new SecurityException("Torrent file path attempted " +
-					"to break directory jail!");
-			}
-
-			actual.getParentFile().mkdirs();
-			files.add(new FileStorage(actual, offset, file.size));
-			offset += file.size;
-		}
-		this.bucket = new FileCollectionStorage(files, this.getSize());
+        this.bucket = storageProvider.create(this.files, this.getSize());
 
 		this.stop = false;
 
